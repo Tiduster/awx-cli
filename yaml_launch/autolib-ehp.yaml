@@ -1,0 +1,7 @@
+job_template_id:
+  - 607
+survey:
+  run_default_migrations: 'no'
+  report: 'no'
+  validation: 'no'
+  microlise_environment: 'eh1'

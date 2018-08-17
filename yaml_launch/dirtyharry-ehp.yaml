@@ -1,0 +1,8 @@
+job_template_id:
+  - 1194
+  - 1182
+  - 1061
+survey:
+  run_default_migrations: 'no'
+  report: 'no'
+  si_version: 0.12.1-4.6
