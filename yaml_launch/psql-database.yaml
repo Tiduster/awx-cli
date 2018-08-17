@@ -1,0 +1,4 @@
+job_template_id:
+  - 970
+survey:
+  db_name: 'blusers'
