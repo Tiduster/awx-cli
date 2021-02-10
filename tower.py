@@ -12,6 +12,11 @@ import re
 from math import ceil
 
 from secret import username, secret
+try:
+    from secret import ssh_key_unlock
+except ImportError:
+    logging.debug("Warning: No ssh_key_unlock pass, you won't be able to launchJob")
+
 import yaml
 import requests
 
@@ -358,7 +363,8 @@ def add_host(session, fqdn, inventory_name, delete=False, variables=''):
     except ObjectNotFound:
         url = api_url + 'hosts/'
         payload = {'name':fqdn, 'inventory':inventory_id, 'variables':variables}
-        r = session.post(url, json=payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=payload)
 
         logging.info("%s %s", r.request.method, r.url)
         if (r.status_code != 201):
@@ -381,7 +387,8 @@ def add_group(session, group_name, inventory_name, delete=False):
     except ObjectNotFound:
         url = api_url + 'groups/'
         payload = {'name':group_name, 'inventory':inventory_id}
-        r = session.post(url, json=payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=payload)
 
         logging.info("%s %s", r.request.method, r.url)
         if (r.status_code != 201):
@@ -498,7 +505,8 @@ def associate_to_group(session, fqdn, group_name, inventory_name):
 
     url = api_url + 'hosts/' + str(host_id) + '/groups/'
     payload = {'associate':True, 'id':group_id}
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
 
     logging.info("%s %s", r.request.method, r.url)
     if (r.status_code != 204):
@@ -543,7 +551,8 @@ def associate_children_to_group(session, group_parent_name, group_child_name, in
 
     url = api_url + 'groups/' + str(group_parent_id) + '/children/'
     payload = {'associate':True, 'id':group_child_id}
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
 
     logging.info("%s %s", r.request.method, r.url)
     if (r.status_code != 204):
@@ -570,7 +579,8 @@ def disassociate_from_group(session, fqdn, group_name, inventory_name):
 
     url = api_url + 'hosts/' + str(host_id) + '/groups/'
     payload = {'disassociate':True, 'id':group_id}
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
 
     logging.info("%s %s", r.request.method, r.url)
     if (r.status_code != 204):
@@ -605,7 +615,7 @@ def host_groups(session, fqdn, manual=True):
         return host_groups_list['results']
 
 #Return all hosts in inventory
-def return_all_hosts_from_inventory(session, inventory_name):
+def return_all_hosts_from_inventory(session, inventory_name, manual=False):
     inventory_id = return_inventory_id(session, inventory_name)
 
     url = api_url + 'hosts/'
@@ -632,7 +642,11 @@ def return_all_hosts_from_inventory(session, inventory_name):
                 len(full_list), inventory_name, page)
 
     if nb_search:
-        return full_list
+        if manual:
+            for host in full_list:
+                logging.error(host['name'])
+        else:
+            return full_list
     else:
         raise ObjectNotFound("Inventory %s is empty" % (inventory_name))
 
@@ -938,8 +952,9 @@ def host_vars(session, fqdn, nested=False):
 # Cancel a job in progress
 def stop_job(session, job_id):
     url = api_url + 'jobs/' + str(job_id) + '/cancel/'
-    json_payload = {'can_cancel': 'false'}
-    r = session.post(url, json=json_payload)
+    payload = {'can_cancel': 'false'}
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
     logging.info("%s %s", r.request.method, r.url)
 
     if (r.status_code != 202):
@@ -963,6 +978,7 @@ def launch_job(session, login, password, jsonfile, tags, inventory, limit, si_ve
             time.sleep(COOLDOWN)
             launchCount = 1
         url = api_url + 'job_templates/' + str(job_template_id) + '/launch/'
+
         r = session.get(url)
 
         logging.debug("%s %s", r.request.method, r.url)
@@ -984,11 +1000,9 @@ def launch_job(session, login, password, jsonfile, tags, inventory, limit, si_ve
         except KeyError:
             pass
 
-        credential_id = return_credential_id(session, login)
+        credential_id = return_credential_id(session, login + '-' + exec_settings['environment'])
         json_payload = {'credential': credential_id,
-                'ssh_password': password,
-                'ssh_key_unlock': password,
-                'become_password': password,
+                'ssh_key_unlock': ssh_key_unlock,
                 'extra_vars':extra_vars
         }
         if tags:
@@ -1008,7 +1022,8 @@ def launch_job(session, login, password, jsonfile, tags, inventory, limit, si_ve
 
         logging.debug(json_payload)
 
-        r = session.post(url, json=json_payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=json_payload)
         logging.info("%s %s", r.request.method, r.url)
         if (r.status_code != 201):
             raise ActionFailure("%d : Failed to launch Job Template %d : %s" % (r.status_code, job_template_id, r.text))
@@ -1098,7 +1113,8 @@ def export_ansible_inventory(session, jsonfile, inventory_name, bash=False):
 #Add one schedule
 def add_schedule(session, job_template_id, payload):
     url = api_url + 'job_templates/' + str(job_template_id) + '/schedules/'
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
 
     logging.info("%s %s", r.request.method, r.url)
     if (r.status_code != 201):
@@ -1146,7 +1162,8 @@ def add_job_template(session, data):
             'diff_mode':data['diff_mode'],
             'allow_simultaneous':data['allow_simultaneous']}
 
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
     logging.debug("%s %s", r.request.method, r.url)
     if (r.status_code != 201):
         if r.status_code == 400 and "already exists" in r.text:
@@ -1166,7 +1183,8 @@ def add_job_template(session, data):
         url = api_url + 'job_templates/' + str(job_template_id) + '/extra_credentials/'
         for cred_id in data['extra_credentials']:
             payload = {'id':cred_id}
-            r = session.post(url, json=payload)
+            headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+            r = session.post(url, headers=headers, json=payload)
             logging.info("%s %s", r.request.method, r.url)
             if (r.status_code != 204):
                 raise ActionFailure(">>> %d : Failed to add extra credential to job template '%s': %s" %
@@ -1189,7 +1207,8 @@ def add_job_template(session, data):
                 'description':data['survey']['description'],
                 'spec':data['survey']['spec']}
 
-        r = session.post(url, json=payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=payload)
         logging.info("%s %s", r.request.method, r.url)
         if (r.status_code != requests.codes.ok):
             raise ActionFailure(">>> %d : Failed to add survey to job template '%s': %s" % (r.status_code, data['name'], r.text))
@@ -1293,7 +1312,8 @@ def add_credential(session, data, delete=False):
             'credential_type':data['credential_type'],
             'inputs':data['inputs']}
 
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
     logging.debug("%s %s", r.request.method, r.url)
     if (r.status_code != 201):
         if r.status_code == 400 and "already exists" in r.text:
@@ -1325,11 +1345,13 @@ def add_project(session, data, delete=False):
             'scm_update_cache_timeout':data['scm_update_cache_timeout'],
             'timeout':data['timeout']}
 
-    r = session.post(url, json=payload)
+    headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+    r = session.post(url, headers=headers, json=payload)
     logging.info("%s %s", r.request.method, r.url)
     if r.status_code == 400 and "already exists" in r.text and delete:
         delete_project(session, data['name'])
-        r = session.post(url, json=payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=payload)
     if (r.status_code != 201):
         raise ActionFailure("%d : Failed to add project '%s': %s" % (r.status_code, data['name'], r.text))
     response = json.loads(r.text)
@@ -1374,7 +1396,8 @@ def add_inventory(session, inventory_name, organization_name, delete=False, vari
     except ObjectNotFound:
         url = api_url + 'inventories/'
         payload = {'name':inventory_name, 'organization':organization_id, 'variables':variables}
-        r = session.post(url, json=payload)
+        headers = {'Referer':url, 'X-CSRFTOKEN': session.cookies['csrftoken']}
+        r = session.post(url, headers=headers, json=payload)
 
         logging.info("%s %s", r.request.method, r.url)
         if (r.status_code != 201):
@@ -1548,6 +1571,9 @@ def main():
     parser_lastExecutionChange.add_argument('-q', '--quiet', dest='quiet', action="store_true")
     parser_lastExecutionChange.set_defaults(quiet=False)
 
+    parser_groupVars = subparsers.add_parser('getHostsFromInventory')
+    parser_groupVars.add_argument('inventory_name', action="store", default=None)
+
     subparsers.add_parser('getAllGroupVars')
     subparsers.add_parser('getAllHostVars')
     subparsers.add_parser('getLonelyHosts')
@@ -1651,6 +1677,7 @@ def main():
         'hostVars': host_vars,
         'lastExecutionStatus': last_execution_status,
         'lastExecutionChange': last_execution_change,
+        'getHostsFromInventory': return_all_hosts_from_inventory,
         'getAllGroupVars': all_group_vars,
         'getAllHostVars': all_host_vars,
         'getLonelyHosts': all_lonely_hosts,
@@ -1718,6 +1745,8 @@ def main():
         myargs = (args.group_name, args.inventory_name)
     elif args.subcommand == "deleteInventory":
         myargs = (args.inventory_name,)
+    elif args.subcommand == "getHostsFromInventory":
+        myargs = (args.inventory_name, True)
     elif args.subcommand == "deleteJobTemplate":
         myargs = (args.job_template_name,)
     elif args.subcommand == "addInventory":

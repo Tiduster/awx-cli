@@ -9,6 +9,7 @@ Voici la syntaxe attendue :
 # secret.py:
 username = 'cpatry'
 secret = 'p4ssw0rd$'
+ssh_key_unlock = 'my_very_strong_ssh_key_passphrase'
 ```
 
 ### Usage du script :
@@ -38,6 +39,7 @@ usage: tower.py [-h] [--verbosity {INFO,ERROR,DEBUG}]
     tower.py hostVars [--nested] fqdn
     tower.py lastExecutionStatus id (of the JobTemplate)
     tower.py lastExecutionChange id (of the JobTemplate)
+    tower.py getHostsFromInventory inventory_name
     tower.py getAllGroupVars
     tower.py getAllHostVars
     tower.py getLonelyHosts
